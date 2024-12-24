@@ -1,0 +1,67 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    /*overflow: hidden;*/
+    background: linear-gradient(45deg, #ff006e, #ffbe0b, #8338ec, #3a86ff);
+    background-size: 300% 300%;
+    animation: gradientAnimation 6s ease infinite;
+    place-items: flex-start;
+}
+
+body.navbar-visible {
+    background: #333; /* Set to a solid color when navbar is visible */
+}
+
+#root {
+    width: 100%;
+    background: none; /* Remove background from #root */
+}
+
+.center-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+}
+
+.logo {
+    font-size: 3rem; /* Adjust based on your preference */
+    white-space: nowrap; /* Prevent text wrapping */
+    transition: opacity 1s ease;
+    text-align: center;
+}
+
+.fade-out {
+    opacity: 0;
+}
+
+@keyframes gradientAnimation {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.reset-button {
+    background-color: #555;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 1rem;
+    border-radius: 5px;
+}
+
+.reset-button:hover {
+    background-color: #777;
+}
+

@@ -1,0 +1,49 @@
+// About component
+.about-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+  color: #ffffff;
+
+  @media (max-width: 768px) {
+    padding: 1rem;
+  }
+}
+
+.about-section {
+  margin-bottom: 3rem;
+  animation: fadeIn 0.5s ease-in-out;
+
+  &__title {
+    font-size: 1.8rem;
+    // Updated color to be brighter and more vibrant
+    color: #a388ff; // Lighter purple for better contrast
+    text-shadow: 0 0 10px rgba(163, 136, 255, 0.5); // Subtle glow effect
+    margin-bottom: 1rem;
+    position: relative;
+    padding-bottom: 0.5rem;
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 60px;
+      height: 3px;
+      // Updated gradient to match new color
+      background: linear-gradient(to right, #a388ff, #66a3ff);
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(163, 136, 255, 0.4); // Subtle glow for the underline
+    }
+  }
+
+  &__content {
+    font-size: 1.1rem;
+    line-height: 1.8;
+    color: #e0e0e0;
+
+    @media (max-width: 768px) {
+      font-size: 1rem;
+    }
+  }
+}

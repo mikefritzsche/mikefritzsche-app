@@ -1,7 +1,7 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -9,5 +9,12 @@ export default defineConfig({
     port: 5173,       // Ensure this matches the port Traefik is routing to
     watch: {
       usePolling: true}
-  }
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    include: ['src/**/*.{test,spec}.{js,jsx}'], // Finds tests in any src subfolder
+    exclude: ['node_modules', 'dist', '.idea', '.git', '.cache']
+  },
 })

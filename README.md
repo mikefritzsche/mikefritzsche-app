@@ -14,3 +14,7 @@ Currently, two official plugins are available:
 
 ### Prod
 
+# Testing
+## Clear snapshots
+- npm test -- -u
+

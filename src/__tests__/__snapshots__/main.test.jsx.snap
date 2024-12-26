@@ -1,0 +1,83 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Router Configuration > matches rendered route snapshots > Route: / 1`] = `
+<div>
+  <div
+    data-testid="layout"
+  >
+    <div
+      data-testid="app"
+    >
+      App
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Router Configuration > matches rendered route snapshots > Route: /about 1`] = `
+<div>
+  <div
+    data-testid="layout"
+  >
+    <div
+      data-testid="about"
+    >
+      About
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Router Configuration > matches rendered route snapshots > Route: /resume 1`] = `
+<div>
+  <div
+    data-testid="layout"
+  >
+    <div
+      data-testid="resume"
+    >
+      Resume
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Router Configuration > matches rendered route snapshots > Route: /services 1`] = `
+<div>
+  <div
+    data-testid="layout"
+  >
+    <div
+      data-testid="services"
+    >
+      Services
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Router Configuration > matches routes snapshot 1`] = `
+[
+  {
+    "children": [
+      {
+        "element": <default />,
+        "path": "/",
+      },
+      {
+        "element": <default />,
+        "path": "/resume",
+      },
+      {
+        "element": <default />,
+        "path": "/services",
+      },
+      {
+        "element": <default />,
+        "path": "/about",
+      },
+    ],
+    "element": <default />,
+  },
+]
+`;

@@ -1,0 +1,251 @@
+version: 2.1
+
+orbs:
+  slack: circleci/slack@4.6.0
+
+executors:
+  node-executor:
+    docker:
+      - image: cimg/node:20.11
+
+commands:
+  setup-ssh:
+    steps:
+      - run:
+          name: Setup SSH
+          command: |
+            mkdir -p ~/.ssh
+            echo "$DO_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H $DO_MIKE_SERVER_IP >> ~/.ssh/known_hosts
+
+  determine-version:
+    steps:
+      - run:
+          name: Install jq and semver
+          command: |
+            sudo apt-get update && sudo apt-get install -y jq
+            npm install semver
+      - run:
+          name: Determine Next Semantic Version
+          command: |
+            set -e
+            git fetch --tags
+            
+            # Get environment prefix based on branch name
+            if [[ << pipeline.git.branch >> == *"dev"* ]]; then
+              ENV_PREFIX="dev-"
+            else
+              ENV_PREFIX=""
+            fi
+            
+            CURRENT_VERSION=$(git tag --list "${ENV_PREFIX}*" | sort -V | tail -n1)
+            echo "CURRENT_VERSION=${CURRENT_VERSION}"
+            
+            if [ -z "$CURRENT_VERSION" ]; then
+              NEW_VERSION="${ENV_PREFIX}1.0.0"
+            else
+              NEW_VERSION=$(npx semver -i patch "${CURRENT_VERSION}")
+            fi
+            
+            while git rev-parse "${NEW_VERSION}" >/dev/null 2>&1; do
+              echo "Tag ${NEW_VERSION} already exists. Incrementing patch version."
+              NEW_VERSION=$(npx semver -i patch "${NEW_VERSION}")
+            done
+            
+            echo "NEW_VERSION=${NEW_VERSION}" >> build.env
+            echo "New version determined: ${NEW_VERSION}"
+
+jobs:
+  build:
+    executor: node-executor
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - determine-version
+      - run:
+          name: Build and Save Docker image
+          command: |
+            source build.env
+            
+            # Set environment variables based on branch
+            if [[ << pipeline.git.branch >> == *"dev"* ]]; then
+              ENV="dev"
+              DOMAIN="dev.mikefritzsche.com"
+            else
+              ENV="prod"
+              DOMAIN="www.mikefritzsche.com"
+            fi
+            
+            IMAGE_NAME="mikefritzsche-${ENV}:${NEW_VERSION}"
+            
+            # Build with appropriate environment arg
+            docker build \
+              --build-arg ENV=${ENV} \
+              -t ${IMAGE_NAME} .
+            
+            docker save ${IMAGE_NAME} | gzip > image.tar.gz
+            
+            # Save environment info for deploy
+            echo "ENV=${ENV}" >> build.env
+            echo "DOMAIN=${DOMAIN}" >> build.env
+      - persist_to_workspace:
+          root: .
+          paths:
+            - build.env
+            - image.tar.gz
+
+  deploy:
+    executor: node-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - setup-ssh
+      - run:
+          name: Configure Git
+          command: |
+            git config --global user.email "ci@example.com"
+            git config --global user.name "CircleCI"
+      - run:
+          name: Deploy to Server
+          command: |
+            source build.env
+            TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+            
+            # Copy and deploy
+            scp -o StrictHostKeyChecking=no image.tar.gz $DO_SSH_USER@$DO_MIKE_SERVER_IP:/tmp/
+            
+            ssh -o StrictHostKeyChecking=no $DO_SSH_USER@$DO_MIKE_SERVER_IP "
+              # Load new image
+              docker load < /tmp/image.tar.gz &&
+              rm /tmp/image.tar.gz &&
+            
+              # Store current version for potential rollback
+              CURRENT_CONTAINER=\$(docker ps -f name=mikefritzsche-${ENV}-react-app -q) &&
+              if [ ! -z \"\$CURRENT_CONTAINER\" ]; then
+                CURRENT_IMAGE=\$(docker inspect --format='{{.Config.Image}}' \$CURRENT_CONTAINER)
+                echo \$CURRENT_IMAGE > /home/mikefritzsche/app/${ENV}/previous-version.txt
+              fi &&
+            
+              # Stop and remove current container
+              docker stop mikefritzsche-${ENV}-react-app || true &&
+              docker rm mikefritzsche-${ENV}-react-app || true &&
+            
+              # Run new container
+              docker run -d --name mikefritzsche-${ENV}-react-app \
+                --label traefik.enable=true \
+                --label traefik.http.routers.${ENV}-mikefritzsche-react-app.rule=Host\\(\\\`${DOMAIN}\\\`\\) \
+                --label traefik.http.routers.${ENV}-mikefritzsche-react-app.entrypoints=websecure \
+                --label traefik.http.services.${ENV}-mikefritzsche-react-app.loadbalancer.server.port=80 \
+                --network proxy \
+                mikefritzsche-${ENV}:${NEW_VERSION} &&
+            
+              # Log deployment
+              echo '[${TIMESTAMP}] Deployed version: ${NEW_VERSION}' >> /home/mikefritzsche/app/${ENV}/deployment-log.txt &&
+            
+              # Clean up old images but keep the last 3
+              docker images 'mikefritzsche-${ENV}' --format '{{.ID}} {{.CreatedAt}}' | sort -k 2 -r | tail -n +4 | awk '{print \$1}' | xargs -r docker rmi
+            "
+      - run:
+          name: Create Git Tag and Push
+          command: |
+            source build.env
+            git tag "${NEW_VERSION}"
+            git push https://${GITHUB_TOKEN}:x-oauth-basic@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git "${NEW_VERSION}"
+      - slack/notify:
+          event: pass
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*${ENV} Deployment Success*: Version ${NEW_VERSION} has been deployed to ${DOMAIN}"
+                  }
+                }
+              ]
+            }
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+
+  rollback:
+    executor: node-executor
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Rollback Deployment
+          command: |
+            if [[ << pipeline.git.branch >> == *"dev"* ]]; then
+              ENV="dev"
+              DOMAIN="dev.mikefritzsche.com"
+            else
+              ENV="prod"
+              DOMAIN="www.mikefritzsche.com"
+            fi
+            
+            TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+            
+            ssh -o StrictHostKeyChecking=no $DO_SSH_USER@$DO_MIKE_SERVER_IP "
+              # Get previous version
+              PREVIOUS_IMAGE=\$(cat /home/mikefritzsche/app/${ENV}/previous-version.txt)
+            
+              if [ -z \"\$PREVIOUS_IMAGE\" ]; then
+                echo 'No previous version found to rollback to'
+                exit 1
+              fi
+            
+              # Stop and remove current container
+              docker stop mikefritzsche-${ENV}-react-app || true &&
+              docker rm mikefritzsche-${ENV}-react-app || true &&
+            
+              # Run previous version
+              docker run -d --name mikefritzsche-${ENV}-react-app \
+                --label traefik.enable=true \
+                --label traefik.http.routers.${ENV}-mikefritzsche-react-app.rule=Host\\(\\\`${DOMAIN}\\\`\\) \
+                --label traefik.http.routers.${ENV}-mikefritzsche-react-app.entrypoints=websecure \
+                --label traefik.http.services.${ENV}-mikefritzsche-react-app.loadbalancer.server.port=80 \
+                --network proxy \
+                \$PREVIOUS_IMAGE &&
+            
+              echo '[${TIMESTAMP}] Rolled back to version: \$PREVIOUS_IMAGE' >> /home/mikefritzsche/app/${ENV}/deployment-log.txt
+            "
+      - slack/notify:
+          event: pass
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*${ENV} Rollback Success*: Previous version has been restored to ${DOMAIN}"
+                  }
+                }
+              ]
+            }
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build:
+          context:
+            - do-secrets
+            - slack-secrets
+      - deploy:
+          context:
+            - do-secrets
+            - slack-secrets
+          requires:
+            - build
+  rollback:
+    jobs:
+      - rollback:
+          context:
+            - do-secrets
+            - slack-secrets

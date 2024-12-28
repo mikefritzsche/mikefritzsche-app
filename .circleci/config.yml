@@ -10,14 +10,18 @@ executors:
 
 commands:
   setup-ssh:
+    description: "Setup SSH for Configuration"
     steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:nN5cwuqvZzi1PiQeE26Yn7V7n1Xso63+P1J0HP8jzb0"
       - run:
-          name: Setup SSH
+          name: Setup SSH config
           command: |
             mkdir -p ~/.ssh
-            echo "$DO_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-            ssh-keyscan -H $DO_MIKE_SERVER_IP >> ~/.ssh/known_hosts
+            chmod 700 ~/.ssh
+            echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null" > ~/.ssh/config
+            chmod 600 ~/.ssh/config
 
   determine-version:
     steps:
